@@ -34,14 +34,9 @@ const REPOSITORY_PATH: string = 'Local Settings\\Software\\Microsoft\\Windows\\C
 //  even when installed to a different partition (Windows creates symlinks).
 const RESOURCES_PATH: string = 'Local Settings\\MrtCache\\C:%5CProgram Files%5CWindowsApps%5C{{PACKAGE_ID}}%5Cresources.pri';
 
-// Pattern to retrieve a game entry's display name. Should only be used to extract the
-//  display name from the resources path, and even then only if we can't resolve the
-//  name from the PACKAGE_REPO key.
-const APP_DISPLAY_NAME: string = '@{{{PACKAGE_ID}}?ms-resource://{{APP_ID}}/resources/AppDisplayName}';
-
 /**
- * base class to interact with local Uplay game store.
- * @class UPlayLauncher
+ * base class to interact with local xbox game store.
+ * @class XboxLauncher
  */
 class XboxLauncher implements types.IGameStore {
   public id: string;
