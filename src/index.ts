@@ -119,7 +119,12 @@ class XboxLauncher implements types.IGameStore {
           : names).map(key => key.key);
       });
     } catch (err) {
-      log('error', 'unable to retrieve key names', keyPath);
+      // It's perfectly valid for a keypath not to exist. We're
+      //  only concerned with keypaths that exist and a different error
+      //  is raised.
+      if (err.code !== 'ENOENT') {
+        log('error', 'unable to retrieve key names', keyPath);
+      }
     }
 
     return keyNames;
