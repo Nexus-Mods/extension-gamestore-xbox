@@ -1,5 +1,6 @@
 // tslint:disable: max-line-length
 import * as Promise from 'bluebird';
+import { spawn } from 'child_process';
 import * as path from 'path';
 import { log, types, util } from 'vortex-api';
 import * as winapi from 'winapi-bindings';
@@ -28,6 +29,9 @@ const IGNORABLE: string[] = [
 // Generally contains all game specific information.
 //  Please note: Package display name might not be resolved correctly.
 const REPOSITORY_PATH: string = 'Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository\\Packages';
+
+// A secondary repository path which can be used to ascertain the app's execution name.
+const REPOSITORY_PATH2: string = 'Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\PackageRepository\\Packages';
 
 // Registry key path pattern pointing to a package's resources.
 //  Xbox app will always have an entry for a package inside C:\Program Files\WindowsApps
@@ -74,9 +78,9 @@ class XboxLauncher implements types.IGameStore {
     }
 
     return this.findByAppId(appInfo).then(entry => {
-      const launchCommand = `explorer.exe shell:appsFolder\\${(entry as any).appid}_${entry.publisherId}!${entry.executionName}`;
+      const launchCommand = `shell:appsFolder\\${(entry as any).appid}_${entry.publisherId}!${entry.executionName}`;
       log('debug', 'launching game through xbox store', launchCommand);
-      return util.opn(launchCommand).catch(err => Promise.resolve());
+      return this.oneShotLaunch(launchCommand);
     });
   }
 
@@ -130,6 +134,13 @@ class XboxLauncher implements types.IGameStore {
     return keyNames;
   }
 
+  private oneShotLaunch(launchCommand: string) {
+    // Given its unconventional launch command, util.opn cannot be used
+    //  here as it will report ENOENT. We spawn explorer.exe with the launch command separately.
+    spawn('explorer.exe', [launchCommand], { shell: true });
+    return Promise.resolve();
+  }
+
   // Given the registry path we're using to find game entries
   //  there's a high probability we will create entries for regular Microsoft
   //  store apps as well as Xbox games. At the time of creation, we were not
@@ -147,8 +158,15 @@ class XboxLauncher implements types.IGameStore {
             // The full package id containing an entry's identity, version and publisher id.
             const packageId = key;
 
-            const firstKeyName: string = this.getFirstKeyName('HKEY_CLASSES_ROOT', path.join(REPOSITORY_PATH, key));
-            const executionName: string = !!firstKeyName ? firstKeyName : 'App';
+            let executionName: string;
+            const firstKeyName: string = this.getFirstKeyName('HKEY_CLASSES_ROOT', path.join(REPOSITORY_PATH2, key));
+            if (!!firstKeyName) {
+              const split = firstKeyName.split('!');
+              executionName = split.length > 1 ? split[split.length - 1] : 'App';
+            } else {
+              // Default app name.
+              executionName = 'App';
+            }
 
             // Publisher id is expected to be at the very end of the key,
             //  following the last underscore in the entry's name.
