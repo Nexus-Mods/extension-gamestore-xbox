@@ -77,8 +77,27 @@ class XboxLauncher implements types.IGameStore {
       return Promise.reject(new util.ArgumentInvalid('appInfo is undefined/null'));
     }
 
-    return this.findByAppId(appInfo).then(entry => {
-      const launchCommand = `shell:appsFolder\\${(entry as any).appid}_${entry.publisherId}!${entry.executionName}`;
+    const isCustomExecObject = () => {
+      return ((typeof(appInfo) === 'object') && ('appId' in appInfo));
+    };
+
+    const findExecName = (entry: IXboxEntry) => {
+      let appExecName: string;
+      if (isCustomExecObject()) {
+        const nameArg = appInfo.args.find(arg => 'appExecName' in arg);
+        appExecName = (!!nameArg)
+          ? nameArg.appExecName
+          : entry.executionName;
+      } else {
+        appExecName = entry.executionName;
+      }
+
+      return appExecName;
+    };
+
+    const appId = isCustomExecObject() ? appInfo.appId : appInfo.toString();
+    return this.findByAppId(appId).then(entry => {
+      const launchCommand = `shell:appsFolder\\${(entry as any).appid}_${entry.publisherId}!${findExecName(entry)}`;
       log('debug', 'launching game through xbox store', launchCommand);
       return this.oneShotLaunch(launchCommand);
     });
