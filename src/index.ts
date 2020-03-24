@@ -59,9 +59,11 @@ class XboxLauncher implements types.IGameStore {
         });
       } catch (err) {
         log('info', 'xbox launcher not found', { error: err.message });
+        this.isXboxInstalled = false;
       }
     } else {
       log('info', 'xbox launcher not found', { error: 'only available on Windows systems' });
+      this.isXboxInstalled = false;
     }
   }
 
@@ -167,7 +169,9 @@ class XboxLauncher implements types.IGameStore {
   //  ignorable packages using the IGNORABLE array we defined at the top of
   //  this script.
   private getGameEntries(): Promise<IXboxEntry[]> {
-    return new Promise<IXboxEntry[]>((resolve, reject) => {
+    return (this.isXboxInstalled === false) // No point in doing this if the app isn't installed!
+      ? Promise.resolve([])
+      : new Promise<IXboxEntry[]>((resolve, reject) => {
       try {
         winapi.WithRegOpen('HKEY_CLASSES_ROOT', REPOSITORY_PATH, hkey => {
           const keys: string[] = winapi.RegEnumKeys(hkey)
@@ -200,7 +204,14 @@ class XboxLauncher implements types.IGameStore {
 
             // Display name entry is generally resolved to the game's actual name
             //  but might be pointing towards a different key in registry...
-            const displayName: string = winapi.RegGetValue('HKEY_CLASSES_ROOT', REPOSITORY_PATH + '\\' + key, 'DisplayName').value as string;
+            let displayName: string;
+            try {
+              displayName = winapi.RegGetValue('HKEY_CLASSES_ROOT', REPOSITORY_PATH + '\\' + key, 'DisplayName').value as string;
+            } catch (err) {
+              log('info', 'gamestore-xbox: unable to query app display name', err);
+              return undefined;
+            }
+
             if (displayName.startsWith('@')) {
               // Lets try and resolve this nightmare.
               const cachePath: string = RESOURCES_PATH.replace('{{PACKAGE_ID}}', packageId);
@@ -232,17 +243,22 @@ class XboxLauncher implements types.IGameStore {
               name = displayName;
             }
 
-            // This should be an IXboxEntry instead of "any" but tslint is being
-            //  retarded and can't deduce that IXboxEntry extends IGameStoreEntry
-            const gameEntry: any = {
-              appid,
-              publisherId,
-              executionName,
-              gamePath: winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string,
-              name,
-              gameStoreId: STORE_ID,
-            };
-            return gameEntry;
+            try {
+              // This should be an IXboxEntry instead of "any" but tslint is being
+              //  retarded and can't deduce that IXboxEntry extends IGameStoreEntry
+              const gameEntry: any = {
+                appid,
+                publisherId,
+                executionName,
+                gamePath: winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string,
+                name,
+                gameStoreId: STORE_ID,
+              };
+              return gameEntry;
+            } catch (err) {
+              log('error', 'gamstore-xbox: unable to query the app game path', err);
+              return undefined;
+            }
           });
           return resolve(gameEntries.filter(entry => !!entry));
         });
