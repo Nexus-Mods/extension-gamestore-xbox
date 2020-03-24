@@ -84,7 +84,7 @@ class XboxLauncher implements types.IGameStore {
     const findExecName = (entry: IXboxEntry) => {
       let appExecName: string;
       if (isCustomExecObject()) {
-        const nameArg = appInfo.args.find(arg => 'appExecName' in arg);
+        const nameArg = appInfo.parameters.find(arg => 'appExecName' in arg);
         appExecName = (!!nameArg)
           ? nameArg.appExecName
           : entry.executionName;
