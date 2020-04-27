@@ -105,13 +105,28 @@ class XboxLauncher implements types.IGameStore {
     });
   }
 
+  public findByName(appName: string): Promise<IXboxEntry> {
+    const re = new RegExp(appName);
+    return this.allGames()
+      .then(entries => {
+        const gameEntry = entries.find(entry => re.test((entry as any).name));
+        return !!gameEntry
+          ? Promise.resolve(gameEntry)
+          : Promise.reject(new types.GameEntryNotFound(appName, STORE_ID));
+      });
+  }
+
   /**
    * find the first game with the specified appid or one of the specified appids
    */
-  public findByAppId(appId: string): Promise<IXboxEntry> {
+  public findByAppId(appId: string | string[]): Promise<IXboxEntry> {
+    const matcher = Array.isArray(appId)
+      ? (entry) => (appId.includes(entry.appid))
+      : (entry) => (appId === entry.appid);
+
     return this.allGames()
       .then(entries => {
-        const gameEntry = entries.find(entry => (entry as any).appid === appId);
+        const gameEntry = entries.find(matcher);
         if (gameEntry === undefined) {
           return Promise.reject(
             new types.GameEntryNotFound(Array.isArray(appId) ? appId.join(', ') : appId, STORE_ID));
@@ -126,6 +141,13 @@ class XboxLauncher implements types.IGameStore {
       this.mCache = this.getGameEntries();
     }
     return this.mCache;
+  }
+
+  public launchGameStore(api: types.IExtensionApi, parameters?: string[]): Promise<void> {
+    const execName = !!parameters
+      ? parameters.join('') : 'Microsoft.Xbox.App';
+    const launchCommand = `shell:appsFolder\\Microsoft.GamingApp_8wekyb3d8bbwe!${execName}`;
+    return this.oneShotLaunch(launchCommand);
   }
 
   private getFirstKeyName(rootKey: winapi.REGISTRY_HIVE, keyPath: string): string {
