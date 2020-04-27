@@ -58,7 +58,7 @@ class XboxLauncher implements types.IGameStore {
           this.isXboxInstalled = keys.find(key => key.startsWith(XBOXAPP_NAME)) !== undefined;
         });
       } catch (err) {
-        log('info', 'xbox launcher not found', { error: err.message });
+        log('info', 'xbox launcher not found', { error: err.code });
         this.isXboxInstalled = false;
       }
     } else {
