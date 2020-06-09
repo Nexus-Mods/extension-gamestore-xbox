@@ -230,7 +230,7 @@ class XboxLauncher implements types.IGameStore {
             try {
               displayName = winapi.RegGetValue('HKEY_CLASSES_ROOT', REPOSITORY_PATH + '\\' + key, 'DisplayName').value as string;
             } catch (err) {
-              log('info', 'gamestore-xbox: unable to query app display name', err);
+              log('info', 'gamestore-xbox: unable to query app display name', key);
               return undefined;
             }
 
@@ -278,7 +278,7 @@ class XboxLauncher implements types.IGameStore {
               };
               return gameEntry;
             } catch (err) {
-              log('error', 'gamstore-xbox: unable to query the app game path', err);
+              log('error', 'gamstore-xbox: unable to query the app game path', key);
               return undefined;
             }
           });
