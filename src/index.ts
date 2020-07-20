@@ -106,7 +106,7 @@ class XboxLauncher implements types.IGameStore {
   }
 
   public findByName(appName: string): Promise<IXboxEntry> {
-    const re = new RegExp(appName);
+    const re = new RegExp('^' + appName + '$');
     return this.allGames()
       .then(entries => {
         const gameEntry = entries.find(entry => re.test((entry as any).name));
