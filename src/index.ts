@@ -137,7 +137,11 @@ class XboxLauncher implements types.IGameStore {
   }
 
   public allGames(): Promise<IXboxEntry[]> {
-    if (!this.mCache && this.isXboxInstalled) {
+    if (!this.isXboxInstalled) {
+      return Promise.resolve([]);
+    }
+
+    if (!this.mCache) {
       this.mCache = this.getGameEntries();
     }
     return this.mCache;
