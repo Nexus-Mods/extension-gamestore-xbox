@@ -56,6 +56,9 @@ class XboxLauncher implements types.IGameStore {
         winapi.WithRegOpen('HKEY_CLASSES_ROOT', REPOSITORY_PATH, hkey => {
           const keys = winapi.RegEnumKeys(hkey).map(key => key.key.toLowerCase());
           this.isXboxInstalled = keys.find(key => key.startsWith(XBOXAPP_NAME)) !== undefined;
+          if (!this.isXboxInstalled) {
+            log('info', 'xbox launcher not installed: microsoft.xboxapp missing');
+          }
         });
       } catch (err) {
         log('info', 'xbox launcher not found', { error: err.code });
@@ -143,6 +146,9 @@ class XboxLauncher implements types.IGameStore {
 
     if (!this.mCache) {
       this.mCache = this.getGameEntries();
+      this.mCache.tap(entries => {
+        log('info', 'games found in xbox store:', entries.length);
+      });
     }
     return this.mCache;
   }
@@ -188,6 +194,39 @@ class XboxLauncher implements types.IGameStore {
     return Promise.resolve();
   }
 
+  private resolveRef(packageId: string, displayName: string): string {
+    // Lets try and resolve this nightmare.
+    const cachePath: string = RESOURCES_PATH.replace('{{PACKAGE_ID}}', packageId);
+    const firstKey: string = this.getFirstKeyName('HKEY_CLASSES_ROOT', cachePath);
+    if (!firstKey) {
+      return undefined;
+    }
+    const hivesPath: string = path.join(cachePath, firstKey);
+    const hives: string[] = this.getKeyNames('HKEY_CLASSES_ROOT', hivesPath);
+    if (hives.length === 0) {
+      log('debug', 'no hives', hivesPath);
+      return undefined;
+    }
+
+    let name: string;
+
+    hives.forEach(hive => {
+      try {
+        const namePath: string = path.join(hivesPath, hive);
+        winapi.WithRegOpen('HKEY_CLASSES_ROOT', namePath, secondhkey => {
+          const values: string[] = winapi.RegEnumValues(secondhkey).map(val => val.key);
+          if (values.indexOf(displayName) !== -1) {
+            name = winapi.RegGetValue('HKEY_CLASSES_ROOT', namePath, displayName).value as string;
+          }
+        });
+      } catch (err) {
+        log('debug', 'failed to open hive', { hivesPath, hive });
+        return undefined;
+      }
+    });
+    return name;
+  }
+
   // Given the registry path we're using to find game entries
   //  there's a high probability we will create entries for regular Microsoft
   //  store apps as well as Xbox games. At the time of creation, we were not
@@ -203,6 +242,7 @@ class XboxLauncher implements types.IGameStore {
           const keys: string[] = winapi.RegEnumKeys(hkey)
             .filter(key => IGNORABLE.find(ign => key.key.toLowerCase().startsWith(ign)) === undefined)
             .map(key => key.key);
+          log('info', 'xbox store unignored entries:', keys.length);
           const gameEntries: IXboxEntry[] = keys.map(key => {
             // The full package id containing an entry's identity, version and publisher id.
             const packageId = key;
@@ -238,36 +278,9 @@ class XboxLauncher implements types.IGameStore {
               return undefined;
             }
 
-            if (displayName.startsWith('@')) {
-              // Lets try and resolve this nightmare.
-              const cachePath: string = RESOURCES_PATH.replace('{{PACKAGE_ID}}', packageId);
-              const firstKey: string = this.getFirstKeyName('HKEY_CLASSES_ROOT', cachePath);
-              if (!firstKey) {
-                return undefined;
-              }
-              const hivesPath: string = path.join(cachePath, firstKey);
-              const hives: string[] = this.getKeyNames('HKEY_CLASSES_ROOT', hivesPath);
-              if (hives.length === 0) {
-                return undefined;
-              }
-
-              hives.forEach(hive => {
-                try {
-                  const namePath: string = path.join(hivesPath, hive);
-                  winapi.WithRegOpen('HKEY_CLASSES_ROOT', namePath, secondhkey => {
-                    const values: string[] = winapi.RegEnumValues(secondhkey).map(val => val.key);
-                    if (values.indexOf(displayName) !== -1) {
-                      name = winapi.RegGetValue('HKEY_CLASSES_ROOT', namePath, displayName).value as string;
-                    }
-                  });
-                } catch (err) {
-                  return undefined;
-                }
-              });
-            } else {
-              // easy.
-              name = displayName;
-            }
+            name = (displayName.startsWith('@'))
+              ? this.resolveRef(packageId, displayName)
+              : displayName;
 
             try {
               // This should be an IXboxEntry instead of "any" but tslint is being
@@ -289,6 +302,7 @@ class XboxLauncher implements types.IGameStore {
           return resolve(gameEntries.filter(entry => !!entry));
         });
       } catch (err) {
+        log('info', 'gamestore-xbox: failed to read repository', err.message);
         return reject(err);
       }
     });
