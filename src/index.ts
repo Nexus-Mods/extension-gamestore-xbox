@@ -153,6 +153,17 @@ class XboxLauncher implements types.IGameStore {
     return this.mCache;
   }
 
+  public reloadGames(): Promise<void> {
+    if (!this.isXboxInstalled) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      this.mCache = this.getGameEntries();
+      return resolve();
+    });
+  }
+
   public launchGameStore(api: types.IExtensionApi, parameters?: string[]): Promise<void> {
     const execName = !!parameters
       ? parameters.join('') : 'Microsoft.Xbox.App';
