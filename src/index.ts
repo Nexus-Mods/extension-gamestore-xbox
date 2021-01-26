@@ -164,6 +164,19 @@ class XboxLauncher implements types.IGameStore {
     });
   }
 
+  public getGameStorePath(): Promise<string> {
+    // Xbox game store doesn't have a path we can reliably
+    //  query, which is why we're just returning undefined here.
+    return Promise.resolve(undefined);
+  }
+
+  public isGameStoreInstalled(): Promise<boolean> {
+    // Since we return undefined in getGameStorePath, we need
+    //  to define our own way of telling the game store helper
+    //  if the game store is installed.
+    return Promise.resolve(this.isXboxInstalled);
+  }
+
   public launchGameStore(api: types.IExtensionApi, parameters?: string[]): Promise<void> {
     const execName = !!parameters
       ? parameters.join('') : 'Microsoft.Xbox.App';
