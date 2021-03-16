@@ -33,6 +33,9 @@ const REPOSITORY_PATH: string = 'Local Settings\\Software\\Microsoft\\Windows\\C
 // A secondary repository path which can be used to ascertain the app's execution name.
 const REPOSITORY_PATH2: string = 'Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\PackageRepository\\Packages';
 
+// Path to the registry location containing the mutable path locations.
+const MUTABLE_LOCATION_PATH: string = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModel\\StateRepository\\Cache\\Package\\Data';
+
 // Registry key path pattern pointing to a package's resources.
 //  Xbox app will always have an entry for a package inside C:\Program Files\WindowsApps
 //  even when installed to a different partition (Windows creates symlinks).
@@ -218,6 +221,38 @@ class XboxLauncher implements types.IGameStore {
     return Promise.resolve();
   }
 
+  private resolveMutableLocation(packageId: string): string {
+    let mutableLocation: string = undefined;
+    try {
+      winapi.WithRegOpen('HKEY_LOCAL_MACHINE', MUTABLE_LOCATION_PATH, firsthkey => {
+        if (mutableLocation !== undefined) {
+          return;
+        }
+        const keys: string[] = winapi.RegEnumKeys(firsthkey).map(key => key.key);
+        for (const key of keys) {
+          if (mutableLocation !== undefined) {
+            break;
+          }
+          const hivePath = path.join(MUTABLE_LOCATION_PATH, key);
+          winapi.WithRegOpen('HKEY_LOCAL_MACHINE', hivePath, secondhkey => {
+            const values: string[] = winapi.RegEnumValues(secondhkey).map(val => val.key);
+            if (values.includes('MutableLink') && values.includes('MutableLocation')) {
+              const link = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLink').value as string;
+              if (link === packageId) {
+                mutableLocation = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLocation').value as string;
+                return;
+              }
+            }
+          });
+        };
+      });
+      return mutableLocation;
+    } catch (err) {
+      log('debug', 'failed to resolve mutable location', err);
+      return undefined;
+    }
+  }
+
   private resolveRef(packageId: string, displayName: string): string {
     // Lets try and resolve this nightmare.
     const cachePath: string = RESOURCES_PATH.replace('{{PACKAGE_ID}}', packageId);
@@ -306,6 +341,9 @@ class XboxLauncher implements types.IGameStore {
               ? this.resolveRef(packageId, displayName)
               : displayName;
 
+            const gamePath = winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string;
+            const mutableLocation = this.resolveMutableLocation(gamePath);
+
             try {
               // This should be an IXboxEntry instead of "any" but tslint is being
               //  retarded and can't deduce that IXboxEntry extends IGameStoreEntry
@@ -313,7 +351,9 @@ class XboxLauncher implements types.IGameStore {
                 appid,
                 publisherId,
                 executionName,
-                gamePath: winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string,
+                gamePath: (mutableLocation !== undefined)
+                  ? mutableLocation
+                  : winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string,
                 name,
                 gameStoreId: STORE_ID,
               };
