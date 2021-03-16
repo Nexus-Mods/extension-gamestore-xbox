@@ -351,14 +351,7 @@ class XboxLauncher implements types.IGameStore {
             //  gets updated - this is why we attempt to resolve the absolute mutable location through
             //  the HKLM hive as well - if it's undefined, we just used PackageRootFolder.
             const gamePath = winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string;
-
-            // Using the mutable location in HKLM for gamebryo games breaks
-            //  gamesupport initialization for all other gamebryo extensions
-            //  which rely on the publisher id to be present in the discovered
-            //  game path - we're going to disable mutable location resolution
-            //  for the time being.
-            // const mutableLocation = this.resolveMutableLocation(gamePath);
-            const mutableLocation = undefined;
+            const mutableLocation = this.resolveMutableLocation(gamePath);
 
             try {
               // This should be an IXboxEntry instead of "any" but tslint is being
