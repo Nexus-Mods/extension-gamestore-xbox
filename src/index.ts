@@ -341,6 +341,11 @@ class XboxLauncher implements types.IGameStore {
               ? this.resolveRef(packageId, displayName)
               : displayName;
 
+            // Generally the PackageRootFolder will already point to the mutable directory;
+            //  but we've encountered situations (gamebryo games) where the PackageRootFolder
+            //  although mutable, contains the version of the game which may change as the game
+            //  gets updated - this is why we attempt to resolve the absolute mutable location through
+            //  the HKLM hive as well - if it's undefined, we just used PackageRootFolder.
             const gamePath = winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string;
             const mutableLocation = this.resolveMutableLocation(gamePath);
 
@@ -351,9 +356,7 @@ class XboxLauncher implements types.IGameStore {
                 appid,
                 publisherId,
                 executionName,
-                gamePath: (mutableLocation !== undefined)
-                  ? mutableLocation
-                  : winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string,
+                gamePath: (mutableLocation !== undefined) ? mutableLocation : gamePath,
                 name,
                 gameStoreId: STORE_ID,
               };
