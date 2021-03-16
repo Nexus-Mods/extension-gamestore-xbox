@@ -221,7 +221,7 @@ class XboxLauncher implements types.IGameStore {
     return Promise.resolve();
   }
 
-  private resolveMutableLocation(packageId: string): string {
+  private resolveMutableLocation(packagePath: string): string {
     let mutableLocation: string = undefined;
     try {
       winapi.WithRegOpen('HKEY_LOCAL_MACHINE', MUTABLE_LOCATION_PATH, firsthkey => {
@@ -235,10 +235,14 @@ class XboxLauncher implements types.IGameStore {
           }
           const hivePath = path.join(MUTABLE_LOCATION_PATH, key);
           winapi.WithRegOpen('HKEY_LOCAL_MACHINE', hivePath, secondhkey => {
-            const values: string[] = winapi.RegEnumValues(secondhkey).map(val => val.key);
+            // We only care for string values.
+            const values: string[] = winapi.RegEnumValues(secondhkey)
+              .filter(val => val.type === 'REG_SZ')
+              .map(val => val.key);
+
             if (values.includes('MutableLink') && values.includes('MutableLocation')) {
               const link = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLink').value as string;
-              if (link === packageId) {
+              if (link === packagePath) {
                 mutableLocation = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLocation').value as string;
                 return;
               }
