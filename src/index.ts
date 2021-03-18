@@ -23,7 +23,7 @@ const IGNORABLE: string[] = [
   'microsoft.directx', 'microsoft.gethelp', 'microsoft.getstarted', 'microsoft.hefi', 'microsoft.lockapp',
   'microsoft.microsoft', 'microsoft.net', 'microsoft.office', 'microsoft.oneconnect', 'microsoft.services',
   'microsoft.ui', 'microsoft.vclibs', 'microsoft.windows', 'microsoft.xbox', 'microsoft.zune', 'nvidiacorp',
-  'realtek', 'samsung', 'synapticsincorporated', 'windows',
+  'realtek', 'samsung', 'synapticsincorporated', 'windows', 'dellinc', 'microsoft.people',
 ];
 
 // Generally contains all game specific information.
@@ -222,7 +222,7 @@ class XboxLauncher implements types.IGameStore {
   }
 
   private resolveMutableLocation(packagePath: string): string {
-    let mutableLocation: string = undefined;
+    let mutableLocation: string;
     try {
       winapi.WithRegOpen('HKEY_LOCAL_MACHINE', MUTABLE_LOCATION_PATH, firsthkey => {
         if (mutableLocation !== undefined) {
@@ -241,14 +241,20 @@ class XboxLauncher implements types.IGameStore {
               .map(val => val.key);
 
             if (values.includes('MutableLink') && values.includes('MutableLocation')) {
-              const link = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLink').value as string;
-              if (link === packagePath) {
-                mutableLocation = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLocation').value as string;
+              try {
+                // So we confirmed that we have the mutable values in, but there have been occurences
+                //  where we couldn't retrieve them which is odd. https://github.com/Nexus-Mods/Vortex/issues/8824
+                const link = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLink').value as string;
+                if (link === packagePath) {
+                  mutableLocation = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLocation').value as string;
+                  return;
+                }
+              } catch (err) {
                 return;
               }
             }
           });
-        };
+        }
       });
       return mutableLocation;
     } catch (err) {
@@ -350,7 +356,12 @@ class XboxLauncher implements types.IGameStore {
             //  although mutable, contains the version of the game which may change as the game
             //  gets updated - this is why we attempt to resolve the absolute mutable location through
             //  the HKLM hive as well - if it's undefined, we just used PackageRootFolder.
-            const gamePath = winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string;
+            let gamePath: string;
+            try {
+              gamePath = winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string;
+            } catch (err) {
+              return undefined;
+            }
             const mutableLocation = this.resolveMutableLocation(gamePath);
 
             try {
