@@ -23,7 +23,7 @@ const IGNORABLE: string[] = [
   'microsoft.directx', 'microsoft.gethelp', 'microsoft.getstarted', 'microsoft.hefi', 'microsoft.lockapp',
   'microsoft.microsoft', 'microsoft.net', 'microsoft.office', 'microsoft.oneconnect', 'microsoft.services',
   'microsoft.ui', 'microsoft.vclibs', 'microsoft.windows', 'microsoft.xbox', 'microsoft.zune', 'nvidiacorp',
-  'realtek', 'samsung', 'synapticsincorporated', 'windows', 'dellinc', 'microsoft.people', 'AD2F1837',
+  'realtek', 'samsung', 'synapticsincorporated', 'windows', 'dellinc', 'microsoft.people', 'ad2f1837',
 ];
 
 // Generally contains all game specific information.
