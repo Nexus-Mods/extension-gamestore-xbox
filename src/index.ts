@@ -2,7 +2,8 @@
 import * as Promise from 'bluebird';
 import { spawn } from 'child_process';
 import * as path from 'path';
-import { log, types, util } from 'vortex-api';
+import { fs, log, types, util } from 'vortex-api';
+import { parseStringPromise } from 'xml2js';
 import * as winapi from 'winapi-bindings';
 
 const STORE_ID: string = 'xbox';
@@ -14,6 +15,7 @@ export interface IXboxEntry extends types.IGameStoreEntry {
   packageId: string;
   publisherId: string;
   executionName: string;
+  manifestData?: any;
 }
 
 // List of package naming patterns which are safe to ignore
@@ -221,6 +223,14 @@ class XboxLauncher implements types.IGameStore {
     return Promise.resolve();
   }
 
+  private getAppManifestData(mutablePath: string) {
+    const appManifestFilePath = path.join(mutablePath, 'appxmanifest.xml');
+    return fs.readFileAsync(appManifestFilePath, { encoding: 'utf8' })
+      .then((data) => parseStringPromise(data))
+      .then((parsed) => Promise.resolve(parsed))
+      .catch(err => Promise.resolve(undefined));
+  }
+
   private resolveMutableLocation(packagePath: string): string {
     let mutableLocation: string;
     try {
@@ -363,13 +373,11 @@ class XboxLauncher implements types.IGameStore {
               return undefined;
             }
             const mutableLocation = this.resolveMutableLocation(gamePath);
-
             try {
-              // This should be an IXboxEntry instead of "any" but tslint is being
-              //  retarded and can't deduce that IXboxEntry extends IGameStoreEntry
-              const gameEntry: any = {
+              const gameEntry: IXboxEntry = {
                 appid,
                 publisherId,
+                packageId,
                 executionName,
                 gamePath: (mutableLocation !== undefined) ? mutableLocation : gamePath,
                 name,
@@ -381,7 +389,17 @@ class XboxLauncher implements types.IGameStore {
               return undefined;
             }
           });
-          return resolve(gameEntries.filter(entry => !!entry));
+
+          return Promise.reduce(gameEntries, (accum, entry) => {
+            if (entry?.gamePath) {
+              return this.getAppManifestData(entry.gamePath)
+                .then(manifestData => {
+                  accum.push({ ...entry, manifestData });
+                  return Promise.resolve(accum);
+                })
+            }
+            return Promise.resolve(accum);
+          }, []).then((res) => resolve(res));
         });
       } catch (err) {
         log('info', 'gamestore-xbox: failed to read repository', err.message);
