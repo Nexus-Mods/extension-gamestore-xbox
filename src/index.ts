@@ -3,8 +3,8 @@ import * as Promise from 'bluebird';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import { fs, log, types, util } from 'vortex-api';
-import { parseStringPromise } from 'xml2js';
 import * as winapi from 'winapi-bindings';
+import { parseStringPromise } from 'xml2js';
 
 const STORE_ID: string = 'xbox';
 const MICROSOFT_PUBLISHER_ID: string = '8wekyb3d8bbwe';
@@ -231,18 +231,12 @@ class XboxLauncher implements types.IGameStore {
       .catch(err => Promise.resolve(undefined));
   }
 
-  private resolveMutableLocation(packagePath: string): string {
-    let mutableLocation: string;
+  private mutableLinkMap(): { [link: string]: string } {
+    const result: { [link: string]: string } = {};
     try {
       winapi.WithRegOpen('HKEY_LOCAL_MACHINE', MUTABLE_LOCATION_PATH, firsthkey => {
-        if (mutableLocation !== undefined) {
-          return;
-        }
         const keys: string[] = winapi.RegEnumKeys(firsthkey).map(key => key.key);
         for (const key of keys) {
-          if (mutableLocation !== undefined) {
-            break;
-          }
           const hivePath = path.join(MUTABLE_LOCATION_PATH, key);
           winapi.WithRegOpen('HKEY_LOCAL_MACHINE', hivePath, secondhkey => {
             // We only care for string values.
@@ -255,10 +249,7 @@ class XboxLauncher implements types.IGameStore {
                 // So we confirmed that we have the mutable values in, but there have been occurences
                 //  where we couldn't retrieve them which is odd. https://github.com/Nexus-Mods/Vortex/issues/8824
                 const link = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLink').value as string;
-                if (link === packagePath) {
-                  mutableLocation = winapi.RegGetValue('HKEY_LOCAL_MACHINE', hivePath, 'MutableLocation').value as string;
-                  return;
-                }
+                result[link] = hivePath;
               } catch (err) {
                 return;
               }
@@ -266,6 +257,19 @@ class XboxLauncher implements types.IGameStore {
           });
         }
       });
+      return result;
+    } catch (err) {
+      log('debug', 'failed to resolve mutable location', err);
+      return {};
+    }
+  }
+
+  private resolveMutableLocation(packagePath: string, linkMap: { [link: string]: string }): string {
+    let mutableLocation: string;
+    try {
+      if (linkMap[packagePath] !== undefined) {
+        mutableLocation = winapi.RegGetValue('HKEY_LOCAL_MACHINE', linkMap[packagePath], 'MutableLocation').value as string;
+      }
       return mutableLocation;
     } catch (err) {
       log('debug', 'failed to resolve mutable location', err);
@@ -317,6 +321,8 @@ class XboxLauncher implements types.IGameStore {
       ? Promise.resolve([])
       : new Promise<IXboxEntry[]>((resolve, reject) => {
       try {
+        const mutableLinkMap = this.mutableLinkMap();
+
         winapi.WithRegOpen('HKEY_CLASSES_ROOT', REPOSITORY_PATH, hkey => {
           const keys: string[] = winapi.RegEnumKeys(hkey)
             .filter(key => IGNORABLE.find(ign => key.key.toLowerCase().startsWith(ign)) === undefined)
@@ -372,7 +378,7 @@ class XboxLauncher implements types.IGameStore {
             } catch (err) {
               return undefined;
             }
-            const mutableLocation = this.resolveMutableLocation(gamePath);
+            const mutableLocation = this.resolveMutableLocation(gamePath, mutableLinkMap);
             try {
               const gameEntry: IXboxEntry = {
                 appid,
@@ -396,7 +402,7 @@ class XboxLauncher implements types.IGameStore {
                 .then(manifestData => {
                   accum.push({ ...entry, manifestData });
                   return Promise.resolve(accum);
-                })
+                });
             }
             return Promise.resolve(accum);
           }, []).then((res) => resolve(res));
