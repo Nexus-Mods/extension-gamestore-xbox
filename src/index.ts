@@ -9,7 +9,7 @@ import { parseStringPromise } from 'xml2js';
 const STORE_ID: string = 'xbox';
 const MICROSOFT_PUBLISHER_ID: string = '8wekyb3d8bbwe';
 
-const XBOXAPP_NAME = 'microsoft.xboxapp';
+const XBOXAPP_NAMES = ['microsoft.xboxapp', 'microsoft.gamingapp'];
 
 export interface IXboxEntry extends types.IGameStoreEntry {
   packageId: string;
@@ -47,6 +47,32 @@ const RESOURCES_PATH: string = 'Local Settings\\MrtCache\\C:%5CProgram Files%5CW
  * base class to interact with local xbox game store.
  * @class XboxLauncher
  */
+
+function gameStoreDetection(silent?: boolean): boolean {
+  let isXboxInstalled = false;
+  const logFunc = silent ? () => null : log;
+  if (process.platform === 'win32') {
+    // No Windows, no xbox launcher!
+    try {
+      winapi.WithRegOpen('HKEY_CLASSES_ROOT', REPOSITORY_PATH, hkey => {
+        const keys = winapi.RegEnumKeys(hkey).map(key => key.key.toLowerCase());
+        isXboxInstalled = keys.find(key => XBOXAPP_NAMES.findIndex(name => key.startsWith(name)) !== -1) !== undefined;
+        if (!isXboxInstalled) {
+          logFunc('info', 'xbox launcher not installed: microsoft.xboxapp missing');
+        }
+      });
+    } catch (err) {
+      logFunc('info', 'xbox launcher not found', { error: err.code });
+      isXboxInstalled = false;
+    }
+  } else {
+    logFunc('info', 'xbox launcher not found', { error: 'only available on Windows systems' });
+    isXboxInstalled = false;
+  }
+
+  return isXboxInstalled;
+}
+
 class XboxLauncher implements types.IGameStore {
   public id: string;
   private isXboxInstalled: boolean;
@@ -54,25 +80,7 @@ class XboxLauncher implements types.IGameStore {
 
   constructor() {
     this.id = STORE_ID;
-    this.isXboxInstalled = false;
-    if (process.platform === 'win32') {
-      // No Windows, no xbox launcher!
-      try {
-        winapi.WithRegOpen('HKEY_CLASSES_ROOT', REPOSITORY_PATH, hkey => {
-          const keys = winapi.RegEnumKeys(hkey).map(key => key.key.toLowerCase());
-          this.isXboxInstalled = keys.find(key => key.startsWith(XBOXAPP_NAME)) !== undefined;
-          if (!this.isXboxInstalled) {
-            log('info', 'xbox launcher not installed: microsoft.xboxapp missing');
-          }
-        });
-      } catch (err) {
-        log('info', 'xbox launcher not found', { error: err.code });
-        this.isXboxInstalled = false;
-      }
-    } else {
-      log('info', 'xbox launcher not found', { error: 'only available on Windows systems' });
-      this.isXboxInstalled = false;
-    }
+    this.isXboxInstalled = gameStoreDetection();
   }
 
   // To successfully launch an Xbox game through the app we need to assemble
@@ -145,7 +153,7 @@ class XboxLauncher implements types.IGameStore {
   }
 
   public allGames(): Promise<IXboxEntry[]> {
-    if (!this.isXboxInstalled) {
+    if (!gameStoreDetection()) {
       return Promise.resolve([]);
     }
 
