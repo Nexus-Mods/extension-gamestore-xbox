@@ -7,6 +7,9 @@ import * as winapi from 'winapi-bindings';
 import { parseStringPromise } from 'xml2js';
 
 const STORE_ID: string = 'xbox';
+const STORE_NAME: string = 'Xbox';
+// unwritable game directories => many games aren't actually moddable
+const STORE_PRIORITY: number = 105;
 const MICROSOFT_PUBLISHER_ID: string = '8wekyb3d8bbwe';
 
 const XBOXAPP_NAMES = ['microsoft.xboxapp', 'microsoft.gamingapp'];
@@ -74,12 +77,13 @@ function gameStoreDetection(silent?: boolean): boolean {
 }
 
 class XboxLauncher implements types.IGameStore {
-  public id: string;
+  public id: string = STORE_ID;
+  public name: string = STORE_NAME;
+  public priority: number = STORE_PRIORITY;
   private isXboxInstalled: boolean;
   private mCache: Promise<IXboxEntry[]>;
 
   constructor() {
-    this.id = STORE_ID;
     this.isXboxInstalled = gameStoreDetection();
   }
 
@@ -195,6 +199,16 @@ class XboxLauncher implements types.IGameStore {
       ? parameters.join('') : 'Microsoft.Xbox.App';
     const launchCommand = `shell:appsFolder\\Microsoft.GamingApp_8wekyb3d8bbwe!${execName}`;
     return this.oneShotLaunch(launchCommand);
+  }
+
+  public identifyGame(gamePath: string,
+                      fallback: (gamePath: string) => PromiseLike<boolean>)
+                      : Promise<boolean> {
+    if (gamePath.toLowerCase().split(path.sep).includes('modifiablewindowsapps')) {
+      return Promise.resolve(true);
+    } else {
+      return Promise.resolve(fallback(gamePath));
+    }
   }
 
   private getFirstKeyName(rootKey: winapi.REGISTRY_HIVE, keyPath: string): string {
