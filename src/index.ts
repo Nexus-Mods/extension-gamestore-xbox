@@ -413,7 +413,7 @@ class XboxLauncher implements types.IGameStore {
               };
               return gameEntry;
             } catch (err) {
-              log('error', 'gamstore-xbox: unable to query the app game path', key);
+              log('error', 'gamestore-xbox: unable to query the app game path', key);
               return undefined;
             }
           });
