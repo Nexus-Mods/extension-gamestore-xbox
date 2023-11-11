@@ -1,56 +1,20 @@
-// tslint:disable: max-line-length
-import * as Promise from 'bluebird';
+/* eslint-disable */
 import { spawn } from 'child_process';
 import * as path from 'path';
 import { fs, log, types, util } from 'vortex-api';
 import * as winapi from 'winapi-bindings';
 import { parseStringPromise } from 'xml2js';
-
-const STORE_ID: string = 'xbox';
-const STORE_NAME: string = 'Xbox';
-// unwritable game directories => many games aren't actually moddable
-const STORE_PRIORITY: number = 105;
-const MICROSOFT_PUBLISHER_ID: string = '8wekyb3d8bbwe';
-
-const XBOXAPP_NAMES = ['microsoft.xboxapp', 'microsoft.gamingapp'];
-
-export interface IXboxEntry extends types.IGameStoreEntry {
-  packageId: string;
-  publisherId: string;
-  executionName: string;
-  manifestData?: any;
-}
-
-// List of package naming patterns which are safe to ignore
-//  when browsing the package repository.
-const IGNORABLE: string[] = [
-  'microsoft.accounts', 'microsoft.aad', 'microsoft.advertising', 'microsoft.bing', 'microsoft.desktop',
-  'microsoft.directx', 'microsoft.gethelp', 'microsoft.getstarted', 'microsoft.hefi', 'microsoft.lockapp',
-  'microsoft.microsoft', 'microsoft.net', 'microsoft.office', 'microsoft.oneconnect', 'microsoft.services',
-  'microsoft.ui', 'microsoft.vclibs', 'microsoft.windows', 'microsoft.xbox', 'microsoft.zune', 'nvidiacorp',
-  'realtek', 'samsung', 'synapticsincorporated', 'windows', 'dellinc', 'microsoft.people', 'ad2f1837',
-];
-
-// Generally contains all game specific information.
-//  Please note: Package display name might not be resolved correctly.
-const REPOSITORY_PATH: string = 'Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository\\Packages';
-
-// A secondary repository path which can be used to ascertain the app's execution name.
-const REPOSITORY_PATH2: string = 'Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\PackageRepository\\Packages';
-
-// Path to the registry location containing the mutable path locations.
-const MUTABLE_LOCATION_PATH: string = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModel\\StateRepository\\Cache\\Package\\Data';
-
-// Registry key path pattern pointing to a package's resources.
-//  Xbox app will always have an entry for a package inside C:\Program Files\WindowsApps
-//  even when installed to a different partition (Windows creates symlinks).
-const RESOURCES_PATH: string = 'Local Settings\\MrtCache\\C:%5CProgram Files%5CWindowsApps%5C{{PACKAGE_ID}}%5Cresources.pri';
+import { findInstalledGames } from './util';
+import { GamePathMap, IXboxEntry } from './types';
+import { IGNORABLE, MUTABLE_LOCATION_PATH, REPOSITORY_PATH,
+  REPOSITORY_PATH2, XBOXAPP_NAMES, RESOURCES_PATH, STORE_ID,
+  STORE_NAME, STORE_PRIORITY } from './common';
 
 /**
  * base class to interact with local xbox game store.
  * @class XboxLauncher
  */
-
+// Computer\HKEY_CURRENT_USER\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store
 function gameStoreDetection(silent?: boolean): boolean {
   let isXboxInstalled = false;
   const logFunc = silent ? () => null : log;
@@ -82,9 +46,11 @@ class XboxLauncher implements types.IGameStore {
   public priority: number = STORE_PRIORITY;
   private isXboxInstalled: boolean;
   private mCache: Promise<IXboxEntry[]>;
+  private mApi: types.IExtensionApi;
 
-  constructor() {
+  constructor(api?: types.IExtensionApi) {
     this.isXboxInstalled = gameStoreDetection();
+    this.mApi = api;
   }
 
   // To successfully launch an Xbox game through the app we need to assemble
@@ -163,9 +129,6 @@ class XboxLauncher implements types.IGameStore {
 
     if (!this.mCache) {
       this.mCache = this.getGameEntries();
-      this.mCache.tap(entries => {
-        log('info', 'games found in xbox store:', entries.length);
-      });
     }
     return this.mCache;
   }
@@ -175,7 +138,7 @@ class XboxLauncher implements types.IGameStore {
       return Promise.resolve();
     }
 
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
       this.mCache = this.getGameEntries();
       return resolve();
     });
@@ -338,19 +301,20 @@ class XboxLauncher implements types.IGameStore {
   //  able to find a cleaner registry path, and therefore will have to filter
   //  ignorable packages using the IGNORABLE array we defined at the top of
   //  this script.
-  private getGameEntries(): Promise<IXboxEntry[]> {
+  private async getGameEntries(): Promise<IXboxEntry[]> {
     return (this.isXboxInstalled === false) // No point in doing this if the app isn't installed!
       ? Promise.resolve([])
-      : new Promise<IXboxEntry[]>((resolve, reject) => {
+      : new Promise<IXboxEntry[]>(async (resolve, reject) => {
       try {
         const mutableLinkMap = this.mutableLinkMap();
-
-        winapi.WithRegOpen('HKEY_CLASSES_ROOT', REPOSITORY_PATH, hkey => {
+        const gameMap: GamePathMap = await findInstalledGames(this.mApi);
+        winapi.WithRegOpen('HKEY_CLASSES_ROOT', REPOSITORY_PATH, async hkey => {
           const keys: string[] = winapi.RegEnumKeys(hkey)
             .filter(key => IGNORABLE.find(ign => key.key.toLowerCase().startsWith(ign)) === undefined)
             .map(key => key.key);
           log('info', 'xbox store unignored entries:', keys.length);
-          const gameEntries: IXboxEntry[] = keys.map(key => {
+          const gameEntries: IXboxEntry[] = await keys.reduce(async (accumP: Promise<IXboxEntry[]>, key) => {
+            const accum = await accumP;
             // The full package id containing an entry's identity, version and publisher id.
             const packageId = key;
 
@@ -382,7 +346,7 @@ class XboxLauncher implements types.IGameStore {
               displayName = winapi.RegGetValue('HKEY_CLASSES_ROOT', REPOSITORY_PATH + '\\' + key, 'DisplayName').value as string;
             } catch (err) {
               log('info', 'gamestore-xbox: unable to query app display name', key);
-              return undefined;
+              return Promise.resolve(accum);
             }
 
             name = (displayName.startsWith('@'))
@@ -398,9 +362,11 @@ class XboxLauncher implements types.IGameStore {
             try {
               gamePath = winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string;
             } catch (err) {
-              return undefined;
+              return Promise.resolve(accum);
             }
-            const mutableLocation = this.resolveMutableLocation(gamePath, mutableLinkMap);
+            const mutableLocation = (gameMap[appid] !== undefined)
+              ? gameMap[appid]
+              : this.resolveMutableLocation(gamePath, mutableLinkMap);
             try {
               const gameEntry: IXboxEntry = {
                 appid,
@@ -411,23 +377,20 @@ class XboxLauncher implements types.IGameStore {
                 name,
                 gameStoreId: STORE_ID,
               };
-              return gameEntry;
+
+              if (gameEntry?.gamePath) {
+                const manifestData = await this.getAppManifestData(gameEntry.gamePath);
+                accum.push({ ...gameEntry, manifestData });
+              } else {
+                accum.push(gameEntry);
+              }
             } catch (err) {
               log('error', 'gamestore-xbox: unable to query the app game path', key);
-              return undefined;
-            }
-          });
-
-          return Promise.reduce(gameEntries, (accum, entry) => {
-            if (entry?.gamePath) {
-              return this.getAppManifestData(entry.gamePath)
-                .then(manifestData => {
-                  accum.push({ ...entry, manifestData });
-                  return Promise.resolve(accum);
-                });
             }
             return Promise.resolve(accum);
-          }, []).then((res) => resolve(res));
+          }, Promise.resolve([]));
+
+          return resolve(gameEntries);
         });
       } catch (err) {
         log('info', 'gamestore-xbox: failed to read repository', err.message);
@@ -439,7 +402,7 @@ class XboxLauncher implements types.IGameStore {
 
 function main(context: types.IExtensionContext) {
   const instance: types.IGameStore =
-    process.platform === 'win32' ? new XboxLauncher() : undefined;
+    process.platform === 'win32' ? new XboxLauncher(context.api) : undefined;
 
   if (instance !== undefined) {
     context.registerGameStore(instance);
