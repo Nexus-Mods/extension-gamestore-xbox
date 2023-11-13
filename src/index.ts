@@ -362,7 +362,11 @@ class XboxLauncher implements types.IGameStore {
             try {
               gamePath = winapi.RegGetValue(hkey, key, 'PackageRootFolder').value as string;
             } catch (err) {
-              return Promise.resolve(accum);
+              // This is valid if the game was never run before.
+              gamePath = gameMap?.[appid];
+              if (gamePath === undefined) {
+                return Promise.resolve(accum);
+              }
             }
             const mutableLocation = (gameMap[appid] !== undefined)
               ? gameMap[appid]
