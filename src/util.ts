@@ -35,7 +35,8 @@ export async function findXboxGamingRootPaths(api: types.IExtensionApi): Promise
   }
   const gamingRootPaths = [];
   for (const drive of drives) {
-    const gamingRootPath = await findXboxGamingRootPath(drive);
+    const normalizedDrive = ensurePathSeparator(drive);
+    const gamingRootPath = await findXboxGamingRootPath(normalizedDrive);
     if (gamingRootPath !== null) {
       gamingRootPaths.push(gamingRootPath);
     }
@@ -43,7 +44,7 @@ export async function findXboxGamingRootPaths(api: types.IExtensionApi): Promise
   return gamingRootPaths;
 }
 
-export async function findXboxGamingRootPath(driveRootPath) {
+export async function findXboxGamingRootPath(driveRootPath: string): Promise<string> {
   const gamingRootFilePath = `${driveRootPath}.GamingRoot`;
 
   try {
@@ -87,7 +88,13 @@ export async function findXboxGamingRootPath(driveRootPath) {
 
     log('debug', `Read the following relative path from .GamingRoot: ${relativePath}`);
 
-    return `${driveRootPath}${relativePath}`;
+    const resultPath = `${driveRootPath}${relativePath}`;
+    if (!path.isAbsolute(resultPath)) {
+      // Sanity check
+      return null;
+    }
+
+    return fs.statAsync(resultPath).then(() => resultPath).catch(() => null);
   } catch (err) {
     log('debug', 'Not a valid xbox gaming path', err);
     // Don't propagate this error as it could be due to a legitimate failure
@@ -114,4 +121,14 @@ export async function getAppManifestData(filePath: string) {
     .then((data) => parseStringPromise(data))
     .then((parsed) => Promise.resolve(parsed))
     .catch(err => Promise.resolve(undefined));
+}
+
+function ensurePathSeparator(rootPath: string): string {
+  // Not sure why drivelist isn't returning a normalized
+  //  drive path, but this should fix it.
+  const normalizedPath = path.normalize(rootPath);
+  if (!normalizedPath.endsWith(path.sep)) {
+    return normalizedPath + path.sep;
+  }
+  return normalizedPath;
 }
