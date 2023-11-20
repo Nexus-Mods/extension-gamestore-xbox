@@ -89,7 +89,7 @@ export async function findXboxGamingRootPath(driveRootPath: string): Promise<str
     log('debug', `Read the following relative path from .GamingRoot: ${relativePath}`);
 
     const resultPath = `${driveRootPath}${relativePath}`;
-    if (!path.isAbsolute(resultPath)) {
+    if (!isPathValid(resultPath)) {
       // Sanity check
       return null;
     }
@@ -131,4 +131,19 @@ function ensurePathSeparator(rootPath: string): string {
     return normalizedPath + path.sep;
   }
   return normalizedPath;
+}
+
+function isPathValid(inputString: string): boolean {
+  if (path.isAbsolute(inputString) === false) {
+    return false;
+  }
+
+  // C:\\D:\\whatever will still be considered absolute.
+  //  https://github.com/Nexus-Mods/Vortex/issues/14912
+  const match = inputString.match(/([A-Z]:\\)/gm);
+  if (match.length > 1) {
+    return false;
+  }
+
+  return true;
 }
