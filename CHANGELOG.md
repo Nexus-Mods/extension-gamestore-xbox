@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 - Fixed crash if the xbox custom directory has been deleted
 - Improved error handling
+- Improved path validation for the xbox custom directory
 
 
 ## [0.2.0] - 2023-11-10
