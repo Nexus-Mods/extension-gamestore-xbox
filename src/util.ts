@@ -3,8 +3,9 @@
   Special thanks to the LOOT team for the original C++ implementation used to decipher the .gamingroot file.
 */
 import * as path from 'path';
+import * as fs from 'fs';
 import walk from 'turbowalk';
-import { fs, log, types, util } from 'vortex-api';
+import { log, types, util } from 'vortex-api';
 import { parseStringPromise } from 'xml2js';
 
 import { APP_MANIFEST } from './common';
@@ -48,13 +49,13 @@ export async function findXboxGamingRootPath(driveRootPath: string): Promise<str
   const gamingRootFilePath = `${driveRootPath}.GamingRoot`;
 
   try {
-    const fileStats = await fs.statAsync(gamingRootFilePath);
+    const fileStats = await fs.promises.stat(gamingRootFilePath);
 
     if (!fileStats.isFile()) {
       return null;
     }
 
-    const fileContent: number[] = await fs.readFileAsync(gamingRootFilePath);
+    const fileContent: Buffer = await fs.promises.readFile(gamingRootFilePath);
 
     // Log the content in hexadecimal format for debugging
     const hexBytes = Array.from(fileContent, byte => `0x${byte.toString(16)}`);
@@ -94,7 +95,7 @@ export async function findXboxGamingRootPath(driveRootPath: string): Promise<str
       return null;
     }
 
-    return fs.statAsync(resultPath).then(() => resultPath).catch(() => null);
+    return fs.promises.stat(resultPath).then(() => resultPath).catch(() => null);
   } catch (err) {
     log('debug', 'Not a valid xbox gaming path', err);
     // Don't propagate this error as it could be due to a legitimate failure
@@ -117,7 +118,7 @@ export async function findManifests(rootPath: string, recurse: boolean): Promise
 
 export async function getAppManifestData(filePath: string) {
   const appManifestFilePath = path.join(filePath, APP_MANIFEST);
-  return fs.readFileAsync(appManifestFilePath, { encoding: 'utf8' })
+  return fs.promises.readFile(appManifestFilePath, { encoding: 'utf8' })
     .then((data) => parseStringPromise(data))
     .then((parsed) => Promise.resolve(parsed))
     .catch(err => Promise.resolve(undefined));
