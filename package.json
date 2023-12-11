@@ -1,6 +1,6 @@
 {
   "name": "gamestore-xbox",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Provides discovery and launch support for Microsoft Store (XBox pass) games",
   "main": "./out/index.js",
   "repository": "",
