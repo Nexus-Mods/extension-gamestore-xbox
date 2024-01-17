@@ -113,7 +113,12 @@ export async function findManifests(rootPath: string, recurse: boolean): Promise
         .filter(iter => path.basename(iter.filePath) === APP_MANIFEST)
         .map(iter => iter.filePath));
   }, { recurse, skipHidden: true, skipLinks: true, skipInaccessible: true })
-  .then(() => fileList);
+  .then(() => fileList)
+  .catch(err => {
+    log('error', 'failed to search for manifests', err);
+    // fileList might actually hold _some_ entries at this point.
+    return fileList;
+  });
 }
 
 export async function getAppManifestData(filePath: string) {
